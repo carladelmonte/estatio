@@ -20,25 +20,27 @@ package org.estatio.dom.lease;
 
 import java.util.List;
 
+import com.google.common.eventbus.Subscribe;
+
 import org.joda.time.LocalDate;
 
-import org.apache.isis.applib.annotation.ActionSemantics;
-import org.apache.isis.applib.annotation.ActionSemantics.Of;
+import org.apache.isis.applib.annotation.Action;
+import org.apache.isis.applib.annotation.CollectionLayout;
 import org.apache.isis.applib.annotation.DomainService;
-import org.apache.isis.applib.annotation.Hidden;
+import org.apache.isis.applib.annotation.DomainServiceLayout;
 import org.apache.isis.applib.annotation.MemberOrder;
 import org.apache.isis.applib.annotation.NotContributed;
 import org.apache.isis.applib.annotation.NotInServiceMenu;
 import org.apache.isis.applib.annotation.Programmatic;
-import org.apache.isis.applib.annotation.Render;
-import org.apache.isis.applib.annotation.Render.Type;
+import org.apache.isis.applib.annotation.RenderType;
+import org.apache.isis.applib.annotation.SemanticsOf;
 
 import org.estatio.dom.EstatioDomainService;
 import org.estatio.dom.asset.Unit;
 import org.estatio.dom.valuetypes.LocalDateInterval;
 
-@DomainService(menuOrder = "40", repositoryFor = Occupancy.class)
-@Hidden
+@DomainService(repositoryFor = Occupancy.class)
+@DomainServiceLayout(menuOrder = "40")
 public class Occupancies extends EstatioDomainService<Occupancy> {
 
     public Occupancies() {
@@ -47,17 +49,15 @@ public class Occupancies extends EstatioDomainService<Occupancy> {
 
     // //////////////////////////////////////
 
-    @ActionSemantics(Of.NON_IDEMPOTENT)
+    @Action(semantics = SemanticsOf.NON_IDEMPOTENT)
     @NotContributed
     @MemberOrder(name = "Occupancies", sequence = "10")
-    public Occupancy newOccupancy(
-            final Lease lease,
-            final Unit unit,
-            final LocalDate startDate) {
+    public Occupancy newOccupancy(final Lease lease, final Unit unit, final LocalDate startDate, final LocalDate endDate) {
         Occupancy occupancy = newTransientInstance(Occupancy.class);
         occupancy.setLease(lease);
         occupancy.setUnit(unit);
         occupancy.setStartDate(startDate);
+        occupancy.setEndDate(endDate);
         persistIfNotAlready(occupancy);
         return occupancy;
     }
@@ -65,8 +65,7 @@ public class Occupancies extends EstatioDomainService<Occupancy> {
     // //////////////////////////////////////
 
     @NotInServiceMenu
-    @ActionSemantics(Of.SAFE)
-    @Render(Type.EAGERLY)
+    @CollectionLayout(render = RenderType.EAGERLY)
     @MemberOrder(name = "Occupancies", sequence = "10")
     public List<Occupancy> occupancies(Unit unit) {
         return allMatches("findByUnit", "unit", unit);
@@ -75,8 +74,7 @@ public class Occupancies extends EstatioDomainService<Occupancy> {
     // //////////////////////////////////////
 
     @NotInServiceMenu
-    @ActionSemantics(Of.SAFE)
-    @Render(Type.EAGERLY)
+    @CollectionLayout(render = RenderType.EAGERLY)
     @NotContributed
     @MemberOrder(name = "Occupancies", sequence = "10")
     public List<Occupancy> occupancies(Lease lease) {
@@ -86,25 +84,47 @@ public class Occupancies extends EstatioDomainService<Occupancy> {
     // //////////////////////////////////////
 
     @Programmatic
-    public Occupancy findByLeaseAndUnitAndStartDate(
-            final Lease lease,
-            final Unit unit,
-            final LocalDate startDate) {
-        return firstMatch(
-                "findByLeaseAndUnitAndStartDate",
-                "lease", lease,
-                "unit", unit,
-                "startDate", startDate);
+    public Occupancy findByLeaseAndUnitAndStartDate(final Lease lease, final Unit unit, final LocalDate startDate) {
+        return firstMatch("findByLeaseAndUnitAndStartDate", "lease", lease, "unit", unit, "startDate", startDate);
     }
 
     @Programmatic
-    public List<Occupancy> findByLeaseAndDate(
-            final Lease lease,
-            final LocalDate date) {
-        return allMatches(
-                "findByLeaseAndDate",
-                "lease", lease,
-                "startDate", date,
-                "dateAsEndDate", LocalDateInterval.endDateFromStartDate(date));
+    public List<Occupancy> findByLeaseAndDate(final Lease lease, final LocalDate date) {
+        return allMatches("findByLeaseAndDate", "lease", lease, "startDate", date, "dateAsEndDate", LocalDateInterval.endDateFromStartDate(date));
     }
+
+    // //////////////////////////////////////
+
+    private void verifyFor(Lease lease) {
+        for (Occupancy occupancy : occupancies(lease)) {
+            occupancy.verify();
+        }
+    }
+
+    // //////////////////////////////////////
+
+    @Subscribe
+    @Programmatic
+    public void on(Lease.TerminateEvent ev) {
+        switch (ev.getEventPhase()) {
+        case EXECUTED:
+            verifyFor(ev.getSource());
+        default:
+            break;
+        }
+    }
+
+    @Subscribe
+    @Programmatic
+    public void on(Lease.ChangeDatesEvent ev) {
+        switch (ev.getEventPhase()) {
+        case EXECUTED:
+            verifyFor(ev.getSource());
+        default:
+            break;
+        }
+    }
+
+    // //////////////////////////////////////
+
 }

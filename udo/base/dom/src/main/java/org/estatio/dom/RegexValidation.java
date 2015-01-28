@@ -65,7 +65,7 @@ public final class RegexValidation {
         }
         
         /* Maximum 15 characters, 3 letter property, tenant name, unit name */
-        public static final String REFERENCE = "^(?!.{16,})([A-Z]{3}-[A-Z,0-9]+-[A-Z,0-9]+)$";
+        public static final String REFERENCE = "^(?!.{20,})([A-Z]{3}-[A-Z,0-9]+-[A-Z,0-9]+)$";
     }
     
     public static final class Unit {

@@ -20,10 +20,15 @@ package org.estatio.dom.lease;
 
 import java.util.List;
 
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import javax.jdo.annotations.IdGeneratorStrategy;
 import javax.jdo.annotations.IdentityType;
 import javax.jdo.annotations.VersionStrategy;
 
+import com.google.common.eventbus.Subscribe;
+
+import org.apache.commons.lang3.ObjectUtils;
 import org.joda.time.LocalDate;
 
 import org.apache.isis.applib.annotation.ActionSemantics;
@@ -36,6 +41,7 @@ import org.apache.isis.applib.annotation.Optional;
 import org.apache.isis.applib.annotation.Programmatic;
 import org.apache.isis.applib.annotation.Title;
 import org.apache.isis.applib.annotation.Where;
+import org.apache.isis.applib.services.eventbus.EventBusService;
 
 import org.estatio.dom.EstatioDomainObject;
 import org.estatio.dom.JdoColumnLength;
@@ -459,19 +465,40 @@ public class Occupancy
 
     }
 
-    public void verify() {
-        Lease verifyLease = getLease();
-        
-        if (verifyLease.getTenancyEndDate() == null) {
-            if (verifyLease.getEndDate() != null && !verifyLease.getEndDate().equals(getEndDate())) {
-                setEndDate(verifyLease.getEndDate());
-            } else if (verifyLease.getEndDate() == null) {
-                setEndDate(null);
-            }
-        } else {
-            if (!verifyLease.getTenancyEndDate().equals(getEndDate())) {
-                setEndDate(verifyLease.getTenancyEndDate());
-            }
+    @Subscribe
+    @Programmatic
+    public void on(Lease.ChangeDatesEvent ev) {
+        switch (ev.getEventPhase()) {
+        case EXECUTED:
+            verify();
+        default:
+            break;
         }
     }
+
+    // //////////////////////////////////////
+
+    public void verify() {
+        if (ObjectUtils.compare(getLease().getTenancyStartDate(), getStartDate()) != 0) {
+            setStartDate(getLease().getTenancyStartDate());
+        }
+        if (ObjectUtils.compare(getLease().getTenancyEndDate(), getEndDate()) != 0) {
+            setEndDate(getLease().getTenancyEndDate());
+        }
+    }
+
+    @Programmatic
+    @PostConstruct
+    public void postConstruct() {
+        eventBusService.register(this);
+    }
+
+    @Programmatic
+    @PreDestroy
+    public void preDestroy() {
+        eventBusService.unregister(this);
+    }
+
+    @javax.inject.Inject
+    private EventBusService eventBusService;
 }

@@ -38,25 +38,22 @@ import org.joda.time.Period;
 import org.joda.time.PeriodType;
 
 import org.apache.isis.applib.Identifier;
-import org.apache.isis.applib.annotation.ActionInteraction;
-import org.apache.isis.applib.annotation.ActionSemantics;
-import org.apache.isis.applib.annotation.ActionSemantics.Of;
-import org.apache.isis.applib.annotation.AutoComplete;
-import org.apache.isis.applib.annotation.Bookmarkable;
-import org.apache.isis.applib.annotation.Bulk;
-import org.apache.isis.applib.annotation.DescribedAs;
-import org.apache.isis.applib.annotation.Disabled;
-import org.apache.isis.applib.annotation.Hidden;
-import org.apache.isis.applib.annotation.Named;
+import org.apache.isis.applib.annotation.Action;
+import org.apache.isis.applib.annotation.BookmarkPolicy;
+import org.apache.isis.applib.annotation.CollectionLayout;
+import org.apache.isis.applib.annotation.DomainObject;
+import org.apache.isis.applib.annotation.DomainObjectLayout;
+import org.apache.isis.applib.annotation.InvokeOn;
 import org.apache.isis.applib.annotation.NotPersisted;
-import org.apache.isis.applib.annotation.Optional;
+import org.apache.isis.applib.annotation.Optionality;
+import org.apache.isis.applib.annotation.Parameter;
+import org.apache.isis.applib.annotation.ParameterLayout;
 import org.apache.isis.applib.annotation.Programmatic;
-import org.apache.isis.applib.annotation.Prototype;
-import org.apache.isis.applib.annotation.RegEx;
-import org.apache.isis.applib.annotation.Render;
-import org.apache.isis.applib.annotation.Render.Type;
+import org.apache.isis.applib.annotation.RenderType;
+import org.apache.isis.applib.annotation.RestrictTo;
+import org.apache.isis.applib.annotation.SemanticsOf;
 import org.apache.isis.applib.annotation.Where;
-import org.apache.isis.applib.services.eventbus.ActionInteractionEvent;
+import org.apache.isis.applib.services.eventbus.ActionDomainEvent;
 
 import org.estatio.dom.EstatioUserRoles;
 import org.estatio.dom.JdoColumnLength;
@@ -135,8 +132,11 @@ import org.estatio.dom.valuetypes.LocalDateInterval;
                         "endDate != null && (endDate >= :rangeStartDate && endDate < :rangeEndDate) " +
                         "ORDER BY endDate")
 })
-@AutoComplete(repository = Leases.class, action = "autoComplete")
-@Bookmarkable
+@DomainObject(
+        autoCompleteRepository = Leases.class,
+        autoCompleteAction = "autoComplete")
+@DomainObjectLayout(
+        bookmarking = BookmarkPolicy.AS_ROOT)
 public class Lease
         extends Agreement {
 
@@ -151,7 +151,6 @@ public class Lease
     private LeaseStatus status;
 
     @javax.jdo.annotations.Column(allowsNull = "false", length = JdoColumnLength.STATUS_ENUM)
-    @Disabled
     public LeaseStatus getStatus() {
         return status;
     }
@@ -188,7 +187,7 @@ public class Lease
 
     @Override
     @NotPersisted
-    @Hidden(where = Where.PARENTED_TABLES)
+    @org.apache.isis.applib.annotation.Property(hidden = Where.PARENTED_TABLES)
     public Party getPrimaryParty() {
         final AgreementRole ar = getPrimaryAgreementRole();
         return partyOf(ar);
@@ -222,7 +221,7 @@ public class Lease
      * {@link Property properties}, and so it is sufficient to obtain the
      * {@link Property} of the first such {@link Occupancy occupancy}.
      */
-    @Hidden(where = Where.PARENTED_TABLES)
+    @org.apache.isis.applib.annotation.Property(hidden = Where.PARENTED_TABLES)
     public Property getProperty() {
         if (getOccupancies().isEmpty()) {
             return null;
@@ -244,8 +243,8 @@ public class Lease
     }
 
     public Lease change(
-            final @Named("Name") String name,
-            final @Named("Lease Type") @Optional LeaseType leaseType) {
+            final @ParameterLayout(named = "Name") String name,
+            final @ParameterLayout(named = "Lease Type") @Parameter(optional = Optionality.TRUE) LeaseType leaseType) {
         setName(name);
         setLeaseType(leaseType);
         return this;
@@ -264,9 +263,7 @@ public class Lease
     @javax.jdo.annotations.Persistent
     public LocalDate tenancyStartDate;
 
-    @Disabled
-    @Optional
-    @Hidden(where = Where.ALL_TABLES)
+    @org.apache.isis.applib.annotation.Property(hidden = Where.ALL_TABLES, optional = Optionality.TRUE)
     public LocalDate getTenancyStartDate() {
         return tenancyStartDate;
     }
@@ -278,9 +275,7 @@ public class Lease
     @javax.jdo.annotations.Persistent
     public LocalDate tenancyEndDate;
 
-    @Disabled
-    @Optional
-    @Hidden(where = Where.ALL_TABLES)
+    @org.apache.isis.applib.annotation.Property(hidden = Where.ALL_TABLES, optional = Optionality.TRUE)
     public LocalDate getTenancyEndDate() {
         return tenancyEndDate;
     }
@@ -289,8 +284,7 @@ public class Lease
         this.tenancyEndDate = tenancyEndDate;
     }
 
-    @Disabled
-    @Optional
+    @org.apache.isis.applib.annotation.Property(optional = Optionality.TRUE)
     public String getTenancyDuration() {
         LocalDateInterval ldi;
         if (getTenancyStartDate() != null && getTenancyEndDate() != null) {
@@ -312,22 +306,15 @@ public class Lease
 
     // //////////////////////////////////////
 
-    @ActionInteraction(ChangeDatesEvent.class)
+    @Action(domainEvent = ChangeDatesEvent.class)
     public Lease changeTenancyDates(
-            final @Named("Start Date") LocalDate startDate,
-            final @Named("End Date") @Optional LocalDate endDate
+            final @ParameterLayout(named = "Start Date") LocalDate startDate,
+            final @ParameterLayout(named = "End Date") @Parameter(optional = Optionality.TRUE) LocalDate endDate
             ) {
         setTenancyStartDate(startDate);
         setTenancyEndDate(endDate);
-        verifyAllOccupancies();
 
         return this;
-    }
-
-    private void verifyAllOccupancies() {
-        for (Occupancy occupancy : occupancies) {
-            occupancy.verify();
-        }
     }
 
     public LocalDate default0ChangeTenancyDates() {
@@ -360,7 +347,7 @@ public class Lease
     @javax.jdo.annotations.Persistent(mappedBy = "lease")
     private SortedSet<Occupancy> occupancies = new TreeSet<Occupancy>();
 
-    @Render(Type.EAGERLY)
+    @CollectionLayout(render = RenderType.EAGERLY)
     public SortedSet<Occupancy> getOccupancies() {
         return occupancies;
     }
@@ -375,12 +362,15 @@ public class Lease
      * 
      * @param unit
      * @param startDate
+     * @param endDate
+     * 
      * @return
      */
     public Occupancy newOccupancy(
-            final @Named("Unit") Unit unit,
-            final @Named("Start date") @Optional LocalDate startDate) {
-        Occupancy occupancy = occupanciesRepo.newOccupancy(this, unit, startDate);
+            final @ParameterLayout(named = "Unit") Unit unit,
+            final @ParameterLayout(named = "Start date") @Parameter(optional = Optionality.TRUE) LocalDate startDate,
+            final @ParameterLayout(named = "End date") @Parameter(optional = Optionality.TRUE) LocalDate endDate) {
+        Occupancy occupancy = occupanciesRepo.newOccupancy(this, unit, startDate, endDate);
         occupancies.add(occupancy);
         return occupancy;
     }
@@ -394,7 +384,7 @@ public class Lease
      * EST-233.
      */
     @javax.jdo.annotations.Persistent(mappedBy = "lease", defaultFetchGroup = "true")
-    @Render(Type.EAGERLY)
+    @CollectionLayout(render = RenderType.EAGERLY)
     public SortedSet<LeaseItem> getItems() {
         return items;
     }
@@ -403,13 +393,13 @@ public class Lease
         this.items = items;
     }
 
-    @ActionSemantics(Of.NON_IDEMPOTENT)
+    @Action(semantics = SemanticsOf.NON_IDEMPOTENT)
     public LeaseItem newItem(
             final LeaseItemType type,
             final Charge charge,
             final InvoicingFrequency invoicingFrequency,
             final PaymentMethod paymentMethod,
-            final @Named("Start date") LocalDate startDate) {
+            final @ParameterLayout(named = "Start date") LocalDate startDate) {
         LeaseItem leaseItem = leaseItems.newLeaseItem(this, type, charge, invoicingFrequency, paymentMethod, startDate);
         return leaseItem;
     }
@@ -418,7 +408,7 @@ public class Lease
         return getStartDate();
     }
 
-    @Hidden
+    @Action(hidden = Where.EVERYWHERE)
     public LeaseItem findItem(
             final LeaseItemType itemType,
             final LocalDate itemStartDate,
@@ -452,7 +442,7 @@ public class Lease
     @javax.jdo.annotations.Persistent(mappedBy = "lease")
     private SortedSet<BreakOption> breakOptions = new TreeSet<BreakOption>();
 
-    @Render(Type.EAGERLY)
+    @CollectionLayout(render = RenderType.EAGERLY)
     public SortedSet<BreakOption> getBreakOptions() {
         return breakOptions;
     }
@@ -464,11 +454,11 @@ public class Lease
     // //////////////////////////////////////
 
     public Lease newBreakOption(
-            final @Named("Break date") LocalDate breakDate,
-            final @Named("Notification period") @DescribedAs("Notification period in a text format. Example 6y5m2d") String notificationPeriodStr,
+            final @ParameterLayout(named = "Break date") LocalDate breakDate,
+            final @ParameterLayout(named = "Notification period", describedAs = "Notification period in a text format. Example 6y5m2d") String notificationPeriodStr,
             final BreakExerciseType breakExerciseType,
             final BreakType breakType,
-            final @Named("Description") @Optional String description
+            final @ParameterLayout(named = "Description") @Parameter(optional = Optionality.TRUE) String description
             ) {
         final BreakOption breakOption = newTransientInstance(breakType.getFactoryClass());
         breakOption.setType(breakType);
@@ -525,9 +515,7 @@ public class Lease
     @javax.jdo.annotations.Column(name = "paidByBankMandateId")
     private BankMandate paidBy;
 
-    @Hidden(where = Where.ALL_TABLES)
-    @Disabled
-    @Optional
+    @org.apache.isis.applib.annotation.Property(hidden = Where.ALL_TABLES, optional = Optionality.TRUE)
     public BankMandate getPaidBy() {
         return paidBy;
     }
@@ -587,9 +575,9 @@ public class Lease
 
     public Lease newMandate(
             final BankAccount bankAccount,
-            final @Named("Reference") @RegEx(validation = RegexValidation.REFERENCE, caseSensitive = true) String reference,
-            final @Named("Start Date") LocalDate startDate,
-            final @Named("End Date") @Optional LocalDate endDate) {
+            final @ParameterLayout(named = "Reference") @Parameter(regexPattern = RegexValidation.REFERENCE) String reference,
+            final @ParameterLayout(named = "Start Date") LocalDate startDate,
+            final @ParameterLayout(named = "End Date") @Parameter(optional = Optionality.TRUE) LocalDate endDate) {
 
         final Party creditor = getPrimaryParty();
         final Party debtor = getSecondaryParty();
@@ -667,8 +655,7 @@ public class Lease
 
     // //////////////////////////////////////
 
-    @Bulk
-    @Prototype
+    @Action(restrictTo = RestrictTo.PROTOTYPING, invokeOn = InvokeOn.OBJECT_AND_COLLECTION)
     public Lease approveAllTermsOfThisLease() {
         for (LeaseItem item : getItems()) {
             for (LeaseTerm term : item.getTerms()) {
@@ -680,13 +667,13 @@ public class Lease
 
     // //////////////////////////////////////
 
-    @ActionSemantics(Of.IDEMPOTENT)
+    @Action(semantics = SemanticsOf.IDEMPOTENT)
     public Lease verify() {
         verifyUntil(ObjectUtils.min(getEffectiveInterval().endDateExcluding(), getClockService().now()));
         return this;
     }
 
-    @ActionSemantics(Of.IDEMPOTENT)
+    @Action(semantics = SemanticsOf.IDEMPOTENT)
     public Lease verifyUntil(final LocalDate date) {
         for (LeaseItem item : getItems()) {
             LocalDateInterval effectiveInterval = item.getEffectiveInterval();
@@ -697,10 +684,10 @@ public class Lease
 
     // //////////////////////////////////////
 
-    @ActionInteraction(Lease.TerminateEvent.class)
+    @Action(domainEvent = Lease.TerminateEvent.class)
     public Lease terminate(
-            final @Named("Termination Date") LocalDate terminationDate,
-            final @Named("Are you sure?") Boolean confirm) {
+            final @ParameterLayout(named = "Termination Date") LocalDate terminationDate,
+            final @ParameterLayout(named = "Are you sure?") Boolean confirm) {
         doTerminate(terminationDate);
         return this;
     }
@@ -740,8 +727,8 @@ public class Lease
 
     // //////////////////////////////////////
 
-    @ActionInteraction(Lease.SuspendAllEvent.class)
-    public Lease suspendAll(final @Named("Reason") String reason) {
+    @Action(domainEvent = Lease.SuspendAllEvent.class)
+    public Lease suspendAll(final @ParameterLayout(named = "Reason") String reason) {
         for (LeaseItem item : getItems()) {
             item.suspend(reason);
         }
@@ -755,7 +742,7 @@ public class Lease
 
     // //////////////////////////////////////
 
-    @ActionInteraction(ResumeAllEvent.class)
+    @Action(domainEvent = ResumeAllEvent.class)
     public Lease resumeAll() {
         for (LeaseItem item : getItems()) {
             item.doResume();
@@ -770,11 +757,11 @@ public class Lease
     // //////////////////////////////////////
 
     public Lease assign(
-            @Named("Reference") @RegEx(validation = RegexValidation.REFERENCE, caseSensitive = true) final String reference,
-            @Named("Name") final String name,
-            @Named("Tenant") final Party tenant,
-            @Named("Tenancy start date") final LocalDate tenancyStartDate,
-            @Named("Are you sure?") final Boolean confirm
+            @ParameterLayout(named = "Reference") @Parameter(regexPattern = RegexValidation.REFERENCE) final String reference,
+            @ParameterLayout(named = "Name") final String name,
+            @ParameterLayout(named = "Tenant") final Party tenant,
+            @ParameterLayout(named = "Tenancy start date") final LocalDate tenancyStartDate,
+            @ParameterLayout(named = "Are you sure?") final Boolean confirm
             ) {
         Lease newLease = copyToNewLease(reference, name, tenant, getStartDate(), getEndDate(), tenancyStartDate, getEndDate());
         this.doTerminate(new LocalDateInterval(tenancyStartDate, null).endDateFromStartDate());
@@ -818,7 +805,7 @@ public class Lease
                 tenant);
 
         copyItemsAndTerms(newLease, tenancyStartDate);
-        copyOccupancies(newLease, tenancyStartDate);
+        copyOccupancies(newLease, tenancyStartDate, tenancyEndDate);
         copyBreakOptions(newLease, tenancyStartDate);
         copyAgreementRoleCommunicationChannels(newLease, tenancyStartDate);
         this.setNext(newLease);
@@ -837,10 +824,10 @@ public class Lease
         }
     }
 
-    private void copyOccupancies(final Lease newLease, final LocalDate startDate) {
+    private void copyOccupancies(final Lease newLease, final LocalDate startDate, final LocalDate endDate) {
         for (Occupancy occupancy : getOccupancies()) {
             if (occupancy.getInterval().contains(startDate)) {
-                Occupancy newOccupancy = newLease.newOccupancy(occupancy.getUnit(), startDate);
+                Occupancy newOccupancy = newLease.newOccupancy(occupancy.getUnit(), startDate, null);
                 newOccupancy.setActivity(occupancy.getActivity());
                 newOccupancy.setBrand(occupancy.getBrand());
                 newOccupancy.setSector(occupancy.getSector());
@@ -882,11 +869,11 @@ public class Lease
     // //////////////////////////////////////
 
     public Lease renew(
-            @Named("Reference") @RegEx(validation = RegexValidation.Lease.REFERENCE, caseSensitive = true) final String reference,
-            @Named("Name") final String name,
-            @Named("Start date") final LocalDate startDate,
-            @Named("End date") final LocalDate endDate,
-            @Named("Are you sure?") final Boolean confirm
+            @ParameterLayout(named = "Reference") @Parameter(regexPattern = RegexValidation.Lease.REFERENCE) final String reference,
+            @ParameterLayout(named = "Name") final String name,
+            @ParameterLayout(named = "Start date") final LocalDate startDate,
+            @ParameterLayout(named = "End date") final LocalDate endDate,
+            @ParameterLayout(named = "Are you sure?") final Boolean confirm
             ) {
         return copyToNewLease(reference, name, getSecondaryParty(), startDate, endDate, startDate, endDate);
 
@@ -919,7 +906,7 @@ public class Lease
 
     // //////////////////////////////////////
 
-    public void remove(@Named("Are you sure?") Boolean confirm) {
+    public void remove(@ParameterLayout(named = "Are you sure?") Boolean confirm) {
         if (confirm) {
             doRemove();
         }
@@ -944,7 +931,7 @@ public class Lease
 
     // //////////////////////////////////////
 
-    public static class TerminateEvent extends ActionInteractionEvent<Lease> {
+    public static class TerminateEvent extends ActionDomainEvent<Lease> {
         private static final long serialVersionUID = 1L;
 
         public TerminateEvent(
@@ -955,7 +942,7 @@ public class Lease
         }
     }
 
-    public static class SuspendAllEvent extends ActionInteractionEvent<Lease> {
+    public static class SuspendAllEvent extends ActionDomainEvent<Lease> {
         private static final long serialVersionUID = 1L;
 
         public SuspendAllEvent(
@@ -966,7 +953,7 @@ public class Lease
         }
     }
 
-    public static class ResumeAllEvent extends ActionInteractionEvent<Lease> {
+    public static class ResumeAllEvent extends ActionDomainEvent<Lease> {
         private static final long serialVersionUID = 1L;
 
         public ResumeAllEvent(
@@ -977,7 +964,7 @@ public class Lease
         }
     }
 
-    public static class ChangeDatesEvent extends ActionInteractionEvent<Lease> {
+    public static class ChangeDatesEvent extends ActionDomainEvent<Lease> {
         private static final long serialVersionUID = 1L;
 
         public ChangeDatesEvent(
